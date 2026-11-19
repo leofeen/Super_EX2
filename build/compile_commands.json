@@ -1,0 +1,14 @@
+[
+{
+  "directory": "C:/Users/Лео/Desktop/Supercomputers/Super_EX2/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\g++.exe -IC:/Users/Лео/Desktop/Supercomputers/Super_EX2/include -g -std=gnu++23   -O1 -fopenmp -o CMakeFiles\\OMP.dir\\source\\solver.cpp.obj -c C:\\Users\\Лео\\Desktop\\Supercomputers\\Super_EX2\\source\\solver.cpp",
+  "file": "C:\\Users\\Лео\\Desktop\\Supercomputers\\Super_EX2\\source\\solver.cpp",
+  "output": "CMakeFiles\\OMP.dir\\source\\solver.cpp.obj"
+},
+{
+  "directory": "C:/Users/Лео/Desktop/Supercomputers/Super_EX2/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\g++.exe -IC:/Users/Лео/Desktop/Supercomputers/Super_EX2/include -g -std=gnu++23   -O1 -fopenmp -o CMakeFiles\\OMP.dir\\OMP.cpp.obj -c C:\\Users\\Лео\\Desktop\\Supercomputers\\Super_EX2\\OMP.cpp",
+  "file": "C:\\Users\\Лео\\Desktop\\Supercomputers\\Super_EX2\\OMP.cpp",
+  "output": "CMakeFiles\\OMP.dir\\OMP.cpp.obj"
+}
+]

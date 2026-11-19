@@ -1,0 +1,8 @@
+#BSUB -x
+#BSUB -m "polus-c2-ib polus-c4-ib"
+#BSUB -W 00:15
+#BSUB -n 1
+#BSUB -o "SEQ.%J.out"
+#BSUB -e "SEQ.%J.err"
+#BSUB -R "affinity[core(1)]"
+./SEQ 80 80 0
