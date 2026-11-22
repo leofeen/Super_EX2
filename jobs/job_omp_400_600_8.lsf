@@ -1,9 +1,0 @@
-#BSUB -x
-#BSUB -m "polus-c2-ib polus-c4-ib"
-#BSUB -W 00:15
-#BSUB -n 1
-#BSUB -o "OMP.%J.out"
-#BSUB -e "OMP.%J.err"
-#BSUB -R "affinity[core(8)]"
-export OMP_NUM_THREADS=8 OMP_PROC_BIND=close
-/polusfs/lsf/openmp/launchOpenMP.py ./OMP 400 600 8
