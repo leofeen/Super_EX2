@@ -1,3 +1,4 @@
-C:/Users/Лео/Desktop/Supercomputers/Super_EX2/build/CMakeFiles/OMP.dir
-C:/Users/Лео/Desktop/Supercomputers/Super_EX2/build/CMakeFiles/edit_cache.dir
-C:/Users/Лео/Desktop/Supercomputers/Super_EX2/build/CMakeFiles/rebuild_cache.dir
+/home/leofeen/Super_EX2/build/CMakeFiles/OMP.dir
+/home/leofeen/Super_EX2/build/CMakeFiles/MPI.dir
+/home/leofeen/Super_EX2/build/CMakeFiles/edit_cache.dir
+/home/leofeen/Super_EX2/build/CMakeFiles/rebuild_cache.dir

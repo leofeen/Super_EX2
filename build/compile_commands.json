@@ -1,14 +1,26 @@
 [
 {
-  "directory": "C:/Users/Лео/Desktop/Supercomputers/Super_EX2/build",
-  "command": "C:\\msys64\\ucrt64\\bin\\g++.exe -IC:/Users/Лео/Desktop/Supercomputers/Super_EX2/include -g -std=gnu++23   -O1 -fopenmp -o CMakeFiles\\OMP.dir\\source\\solver.cpp.obj -c C:\\Users\\Лео\\Desktop\\Supercomputers\\Super_EX2\\source\\solver.cpp",
-  "file": "C:\\Users\\Лео\\Desktop\\Supercomputers\\Super_EX2\\source\\solver.cpp",
-  "output": "CMakeFiles\\OMP.dir\\source\\solver.cpp.obj"
+  "directory": "/home/leofeen/Super_EX2/build",
+  "command": "/usr/bin/g++  -I/home/leofeen/Super_EX2/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -g -std=gnu++23   -O1 -fopenmp -o CMakeFiles/OMP.dir/source/solver.cpp.o -c /home/leofeen/Super_EX2/source/solver.cpp",
+  "file": "/home/leofeen/Super_EX2/source/solver.cpp",
+  "output": "CMakeFiles/OMP.dir/source/solver.cpp.o"
 },
 {
-  "directory": "C:/Users/Лео/Desktop/Supercomputers/Super_EX2/build",
-  "command": "C:\\msys64\\ucrt64\\bin\\g++.exe -IC:/Users/Лео/Desktop/Supercomputers/Super_EX2/include -g -std=gnu++23   -O1 -fopenmp -o CMakeFiles\\OMP.dir\\OMP.cpp.obj -c C:\\Users\\Лео\\Desktop\\Supercomputers\\Super_EX2\\OMP.cpp",
-  "file": "C:\\Users\\Лео\\Desktop\\Supercomputers\\Super_EX2\\OMP.cpp",
-  "output": "CMakeFiles\\OMP.dir\\OMP.cpp.obj"
+  "directory": "/home/leofeen/Super_EX2/build",
+  "command": "/usr/bin/g++  -I/home/leofeen/Super_EX2/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -g -std=gnu++23   -O1 -fopenmp -o CMakeFiles/OMP.dir/OMP.cpp.o -c /home/leofeen/Super_EX2/OMP.cpp",
+  "file": "/home/leofeen/Super_EX2/OMP.cpp",
+  "output": "CMakeFiles/OMP.dir/OMP.cpp.o"
+},
+{
+  "directory": "/home/leofeen/Super_EX2/build",
+  "command": "/usr/bin/g++  -I/home/leofeen/Super_EX2/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -g -std=gnu++23   -O1 -fopenmp -o CMakeFiles/MPI.dir/source/solver.cpp.o -c /home/leofeen/Super_EX2/source/solver.cpp",
+  "file": "/home/leofeen/Super_EX2/source/solver.cpp",
+  "output": "CMakeFiles/MPI.dir/source/solver.cpp.o"
+},
+{
+  "directory": "/home/leofeen/Super_EX2/build",
+  "command": "/usr/bin/g++  -I/home/leofeen/Super_EX2/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -g -std=gnu++23   -O1 -fopenmp -o CMakeFiles/MPI.dir/MPI.cpp.o -c /home/leofeen/Super_EX2/MPI.cpp",
+  "file": "/home/leofeen/Super_EX2/MPI.cpp",
+  "output": "CMakeFiles/MPI.dir/MPI.cpp.o"
 }
 ]
