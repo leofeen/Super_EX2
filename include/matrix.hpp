@@ -36,6 +36,12 @@ public:
         return data[row*this->columns + column];
     }
 
+    T* get_ptr(size_t row, size_t column)
+    {
+        // return (*this)[row, column];
+        return &data[row*this->columns + column];
+    }
+
     void set(size_t row, size_t column, T value)
     {
         // (*this)[row, column] = value;

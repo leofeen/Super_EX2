@@ -1,7 +1,7 @@
 #include "solver.hpp"
 
 
-Solver::Solver(size_t M, size_t N, double (*boundary_condition)(double, double), int (*check_point_inside_region)(double, double), double x_min, double x_max, double y_min, double y_max) :
+Solver::Solver(size_t M, size_t N, double (*boundary_condition)(double, double), int (*check_point_inside_region)(double, double), double x_min, double x_max, double y_min, double y_max):
 M(M), N(N), x_min(x_min), y_min(y_min), boundary_condition(boundary_condition), check_point_inside_region(check_point_inside_region)
 {
     if ((boundary_condition == nullptr) || (check_point_inside_region == nullptr))
@@ -9,6 +9,9 @@ M(M), N(N), x_min(x_min), y_min(y_min), boundary_condition(boundary_condition), 
         std::cout << "nullptr passed" << '\n';
         std::exit(1);
     }
+
+    this->number_of_divisions_y = 1;
+    this->number_of_divisions_x = 1;
 
     this->h_x = (x_max - x_min) / M;
     this->h_y = (y_max - y_min) / N;
@@ -121,6 +124,7 @@ Matrix<double> Solver::solve_explicit(double precision, int& iteration_count)
     auto step =  zr / descent_A_descent;
 
     int max_iterations = (this->N - 1) * (this->M - 1);
+    // int max_iterations = 2;
     int iteration_number;
     for (iteration_number = 1; iteration_number <= max_iterations; iteration_number++)
     {
@@ -210,7 +214,385 @@ Matrix<double> Solver::solve_explicit(double precision, int& iteration_count)
     return iteration;
 }
 
-Matrix<double> Solver::operator_A(const Matrix<double>& iteration)
+Matrix<double> Solver::solve_mpi(double precision, int &iteration_count)
+{
+    double all_error_sqr = 0;
+    double inv_h_x_sqr = 1.0 / pow(this->h_x, 2);
+    double inv_h_y_sqr = 1.0 / pow(this->h_y, 2);
+    double scalar_product_weight = this->h_x * this->h_y;
+
+    Matrix<double> result(this->M+1, this->N+1);
+
+    double all_zr = 0;
+    double all_descent_A_descent = 0;
+    double all_zr_next = 0;
+
+    // MPI_Init(nullptr, nullptr);
+
+    int all_iterations = 0;
+
+    int number_of_processes;
+    MPI_Comm_size(MPI_COMM_WORLD, &number_of_processes);
+    this->set_number_of_divisions(number_of_processes);
+
+    MPI_Comm grid;
+    int dims[2] = {this->number_of_divisions_x, this->number_of_divisions_y};
+    int periods[2] = {0, 0};
+    MPI_Cart_create(MPI_COMM_WORLD, 2, dims, periods, 0, &grid);
+
+    int rank;
+    int coordinates[2];
+
+    MPI_Comm_rank(grid, &rank);
+    MPI_Cart_coords(grid, rank, 2, coordinates);
+
+    int neighbors[4];
+    // MPI_Cart_shift(grid, 0, 1, &neighbors[0], &neighbors[1]);
+    // MPI_Cart_shift(grid, 1, 1, &neighbors[2], &neighbors[3]);
+    MPI_Cart_shift(grid, 1, 1, &neighbors[1], &neighbors[0]);
+    MPI_Cart_shift(grid, 0, 1, &neighbors[2], &neighbors[3]);
+
+    // std::printf("rank= %d coords= %d %d  neighbors(u,d,l,r)= %d %d %d %d\n", rank, coordinates[0], coordinates[1], neighbors[0], neighbors[1], neighbors[2], neighbors[3]);
+
+    auto x_range_min = this->get_x_range_min(coordinates[0]);
+    auto x_range_max = this->get_x_range_max(coordinates[0]);
+    auto y_range_min = this->get_y_range_min(coordinates[1]);
+    auto y_range_max = this->get_y_range_max(coordinates[1]);
+
+    // std::cout << "x_range_min " << x_range_min << " x_range_max " << x_range_max << " on " << rank << std::endl;
+
+    int local_x_dim = x_range_max - x_range_min + 1;
+    int local_y_dim = y_range_max - y_range_min + 1;
+
+    // std::cout << "x_dim " << local_x_dim << " y_dim " << local_y_dim << " on " << rank << std::endl;
+
+    // for (int i = 0; i < 4; i++)
+    // {
+    //     std::cout << dims_loop[i] << std::endl;
+    // }
+
+    double beta;
+    Matrix<double> local_iteration(local_x_dim, local_y_dim);
+
+    double local_error_sqr;
+    Matrix<double> r(local_x_dim, local_y_dim);
+    Matrix<double> descent(local_x_dim, local_y_dim);
+    Matrix<double> A_descent(local_x_dim, local_y_dim);
+
+    double local_zr = 0;
+    double local_zr_next = 0;
+    double local_descent_A_descent = 0;
+    double local_descent_sqr;
+
+    for (int i = 0; i < local_x_dim; i++)
+    {
+        for (int j = 0; j < local_y_dim; j++)
+        {
+            r.set(i, j, this->B.get(i + x_range_min, j + y_range_min));
+            descent.set(i, j, r.get(i, j) / this->D.get(i + x_range_min, j + y_range_min));
+        
+            local_zr += r.get(i, j) * descent.get(i, j);
+        }
+    }
+
+    // std::cout << "r" << std::endl;
+    // std::cout << r << std::endl;
+    // std::cout << "Descent from " << rank << std::endl;
+    // std::cout << descent << std::endl;
+
+    int buf_space = std::max(local_x_dim, local_y_dim);
+    Matrix<double> send_buf_descent(4, buf_space);
+
+    for (int i = 0; i < local_x_dim; i++)
+    {
+        send_buf_descent.set(1, i, descent.get(i, 0));
+        send_buf_descent.set(0, i, descent.get(i, local_y_dim-1)); 
+    }
+
+    for (int j = 0; j < local_y_dim; j++)
+    {
+        send_buf_descent.set(2, j, descent.get(0, j));  
+        send_buf_descent.set(3, j, descent.get(local_x_dim-1, j)); 
+    }
+
+    // std::cout << "Send to neighbors from " << rank << std::endl;
+    // std::cout << send_buf_descent << std::endl;
+
+    MPI_Request send_descent_requests[4] = {MPI_REQUEST_NULL, MPI_REQUEST_NULL, MPI_REQUEST_NULL, MPI_REQUEST_NULL};
+
+    for (int i = 0; i < 4; i++)
+    {
+        // std::cout << "Descent first " << i << std::endl; 
+        MPI_Isend(send_buf_descent.get_ptr(i, 0), buf_space, MPI_DOUBLE, neighbors[i], 1, grid, &send_descent_requests[i]);
+    }
+
+    for (int i = 1; i < local_x_dim - 1; i++)
+    {
+        for (int j = 1; j < local_y_dim - 1; j++)
+        {
+            A_descent.set(i, j, -(descent.get(i+1, j) + descent.get(i-1, j)) * inv_h_x_sqr - (descent.get(i, j+1) + descent.get(i, j-1)) * inv_h_y_sqr + D.get(i + x_range_min, j + y_range_min)*descent.get(i, j));
+            local_descent_A_descent += descent.get(i, j) * A_descent.get(i, j);
+        }
+    }
+
+    Matrix<double> neighbors_descent(4, buf_space);
+    MPI_Request recv_descent_requests[4] = {MPI_REQUEST_NULL, MPI_REQUEST_NULL, MPI_REQUEST_NULL, MPI_REQUEST_NULL};
+
+    for (int i = 0; i < 4; i++)
+    {
+        MPI_Irecv(neighbors_descent.get_ptr(i, 0), buf_space, MPI_DOUBLE, neighbors[i], 1, grid, &recv_descent_requests[i]);
+    }
+
+    // std::cout << "What" << std::endl;
+    MPI_Waitall(4, recv_descent_requests, MPI_STATUSES_IGNORE);
+    // std::cout << "is" << std::endl;
+    MPI_Waitall(4, send_descent_requests, MPI_STATUSES_IGNORE);
+    // std::cout << "happening" << std::endl;
+
+    // std::cout << "Recieved from neighbors on " << rank << std::endl;
+    // std::cout << neighbors_descent << std::endl;
+
+    for (int i = 1; i < local_x_dim-1; i++)
+    {
+        A_descent.set(i, 0, -(descent.get(i+1, 0) + descent.get(i-1, 0)) * inv_h_x_sqr - (descent.get(i, 1) + neighbors_descent.get(1, i)) * inv_h_y_sqr + D.get(i + x_range_min, y_range_min)*descent.get(i, 0));
+        A_descent.set(i, local_y_dim-1, -(descent.get(i+1, local_y_dim-1) + descent.get(i-1, local_y_dim-1)) * inv_h_x_sqr - (neighbors_descent.get(0, i) + descent.get(i, local_y_dim-1-1)) * inv_h_y_sqr + D.get(i + x_range_min, local_y_dim-1 + y_range_min)*descent.get(i, local_y_dim-1));
+        local_descent_A_descent += descent.get(i, 0) * A_descent.get(i, 0);
+        local_descent_A_descent += descent.get(i, local_y_dim-1) * A_descent.get(i, local_y_dim-1);
+    }
+
+    for (int j = 1; j < local_y_dim-1; j++)
+    {
+        A_descent.set(0, j, -(descent.get(1, j) + neighbors_descent.get(2, j)) * inv_h_x_sqr - (descent.get(0, j+1) + descent.get(0, j-1)) * inv_h_y_sqr + D.get(x_range_min, j + y_range_min)*descent.get(0, j));
+        A_descent.set(local_x_dim-1, j, -(neighbors_descent.get(3, j) + descent.get(local_x_dim-1-1, j)) * inv_h_x_sqr - (descent.get(local_x_dim-1, j+1) + descent.get(local_x_dim-1, j-1)) * inv_h_y_sqr + D.get(local_x_dim-1 + x_range_min, j + y_range_min)*descent.get(local_x_dim-1, j));
+        local_descent_A_descent += descent.get(0, j) * A_descent.get(0, j);
+        local_descent_A_descent += descent.get(local_x_dim-1, j) * A_descent.get(local_x_dim-1, j);
+    }
+
+    A_descent.set(0, 0, -(descent.get(1, 0) + neighbors_descent.get(2, 0)) * inv_h_x_sqr - (descent.get(0, 1) + neighbors_descent.get(1, 0)) * inv_h_y_sqr + D.get(x_range_min, y_range_min)*descent.get(0, 0));
+    A_descent.set(local_x_dim-1, 0, -(neighbors_descent.get(3, 0) + descent.get(local_x_dim-1-1, 0)) * inv_h_x_sqr - (descent.get(local_x_dim-1, 1) + neighbors_descent.get(1, local_x_dim-1)) * inv_h_y_sqr + D.get(local_x_dim-1 + x_range_min, y_range_min)*descent.get(local_x_dim-1, 0));
+    A_descent.set(local_x_dim-1, local_y_dim-1, -(neighbors_descent.get(3, local_y_dim-1) + descent.get(local_x_dim-1-1, local_y_dim-1)) * inv_h_x_sqr - (neighbors_descent.get(0, local_x_dim-1) + descent.get(local_x_dim-1, local_y_dim-1-1)) * inv_h_y_sqr + D.get(local_x_dim-1 + x_range_min, local_y_dim-1 + y_range_min)*descent.get(local_x_dim-1, local_y_dim-1));
+    A_descent.set(0, local_y_dim-1, -(descent.get(1, local_y_dim-1) + neighbors_descent.get(2, local_y_dim-1)) * inv_h_x_sqr - (neighbors_descent.get(0, 0) + descent.get(0, local_y_dim-1-1)) * inv_h_y_sqr + D.get(x_range_min, local_y_dim-1 + y_range_min)*descent.get(0, local_y_dim-1));    
+
+    local_descent_A_descent += descent.get(0, 0) * A_descent.get(0, 0);
+    local_descent_A_descent += descent.get(local_x_dim-1, 0) * A_descent.get(local_x_dim-1, 0);
+    local_descent_A_descent += descent.get(local_x_dim-1, local_y_dim-1) * A_descent.get(local_x_dim-1, local_y_dim-1);
+    local_descent_A_descent += descent.get(0, local_y_dim-1) * A_descent.get(0, local_y_dim-1);
+
+    // std::cout << "descent_A_descent " << descent_A_descent << std::endl;
+
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    MPI_Allreduce(&local_zr, &all_zr, 1, MPI_DOUBLE, MPI_SUM, grid);
+    MPI_Allreduce(&local_descent_A_descent, &all_descent_A_descent, 1, MPI_DOUBLE, MPI_SUM, grid);
+
+    double step = all_zr / all_descent_A_descent;
+
+    int max_iterations = (this->N - 1) * (this->M - 1);
+    // int max_iterations = 2;
+    int iteration_number;
+    for (iteration_number = 1; iteration_number <= max_iterations; iteration_number++)
+    {
+        local_zr_next = 0;
+        for (int i = 0; i < local_x_dim; i++)
+        {
+            for (int j = 0; j < local_y_dim; j++)
+            {
+                local_iteration.set(i, j, local_iteration.get(i, j) + step*descent.get(i, j));
+
+                r.set(i, j, r.get(i, j) - step*A_descent.get(i, j));
+
+                local_zr_next += r.get(i, j) * r.get(i, j) / this->D.get(i + x_range_min, j + y_range_min);
+            }
+        }
+
+        MPI_Barrier(MPI_COMM_WORLD);
+
+        MPI_Allreduce(&local_zr_next, &all_zr_next, 1, MPI_DOUBLE, MPI_SUM, grid);
+
+        beta = all_zr_next / all_zr;
+        local_zr = local_zr_next;
+
+        local_descent_sqr = 0;
+        for (size_t i = 0; i < local_x_dim; i++)
+        {
+            for (size_t j = 0; j < local_y_dim; j++)
+            {
+                descent.set(i, j, r.get(i, j) / this->D.get(i + x_range_min, j + y_range_min) + beta * descent.get(i, j));
+                local_descent_sqr += descent.get(i, j) * descent.get(i, j);
+            }
+        }
+
+        // std::cout << "r" << std::endl;
+        // std::cout << r << std::endl;
+        // std::cout << "beta" << std::endl;
+        // std::cout << beta << std::endl;
+        // std::cout << "Descent" << std::endl;
+        // std::cout << descent << std::endl;
+    
+        local_descent_A_descent = 0;
+        
+        for (int i = 0; i < local_x_dim; i++)
+        {
+            send_buf_descent.set(1, i, descent.get(i, 0));
+            send_buf_descent.set(0, i, descent.get(i, local_y_dim-1));
+        }
+
+        for (int j = 0; j < local_y_dim; j++)
+        {
+            send_buf_descent.set(2, j, descent.get(0, j));
+            send_buf_descent.set(3, j, descent.get(local_x_dim-1, j));
+        }
+
+        for (int i = 0; i < 4; i++)
+        {
+            // std::cout << "Descent loop " << iteration_number << " " << i << std::endl; 
+            MPI_Isend(send_buf_descent.get_ptr(i, 0), buf_space, MPI_DOUBLE, neighbors[i], 1, grid, &send_descent_requests[i]);
+        }
+
+        // std::cout << "Send to neighbors" << std::endl;
+        // std::cout << send_buf_descent << std::endl;
+
+        for (int i = 1; i < local_x_dim - 1; i++)
+        {
+            for (int j = 1; j < local_y_dim - 1; j++)
+            {
+                A_descent.set(i, j, -(descent.get(i+1, j) + descent.get(i-1, j)) * inv_h_x_sqr - (descent.get(i, j+1) + descent.get(i, j-1)) * inv_h_y_sqr + D.get(i + x_range_min, j + y_range_min)*descent.get(i, j));
+                local_descent_A_descent += descent.get(i, j) * A_descent.get(i, j);
+            }
+        }
+
+        for (int i = 0; i < 4; i++)
+        {
+            MPI_Irecv(neighbors_descent.get_ptr(i, 0), buf_space, MPI_DOUBLE, neighbors[i], 1, grid, &recv_descent_requests[i]);
+        }
+
+        MPI_Waitall(4, send_descent_requests, MPI_STATUSES_IGNORE);
+        MPI_Waitall(4, recv_descent_requests, MPI_STATUSES_IGNORE);
+
+        // std::cout << "Received from neighbors" << std::endl;
+        // std::cout << neighbors_descent << std::endl;
+
+        for (int i = 1; i < local_x_dim-1; i++)
+        {
+            A_descent.set(i, 0, -(descent.get(i+1, 0) + descent.get(i-1, 0)) * inv_h_x_sqr - (descent.get(i, 1) + neighbors_descent.get(1, i)) * inv_h_y_sqr + D.get(i + x_range_min, y_range_min)*descent.get(i, 0));
+            A_descent.set(i, local_y_dim-1, -(descent.get(i+1, local_y_dim-1) + descent.get(i-1, local_y_dim-1)) * inv_h_x_sqr - (neighbors_descent.get(0, i) + descent.get(i, local_y_dim-1-1)) * inv_h_y_sqr + D.get(i + x_range_min, local_y_dim-1 + y_range_min)*descent.get(i, local_y_dim-1));
+            local_descent_A_descent += descent.get(i, 0) * A_descent.get(i, 0);
+            local_descent_A_descent += descent.get(i, local_y_dim-1) * A_descent.get(i, local_y_dim-1);
+        }
+
+        for (int j = 1; j < local_y_dim-1; j++)
+        {
+            A_descent.set(0, j, -(descent.get(1, j) + neighbors_descent.get(2, j)) * inv_h_x_sqr - (descent.get(0, j+1) + descent.get(0, j-1)) * inv_h_y_sqr + D.get(x_range_min, j + y_range_min)*descent.get(0, j));
+            A_descent.set(local_x_dim-1, j, -(neighbors_descent.get(3, j) + descent.get(local_x_dim-1-1, j)) * inv_h_x_sqr - (descent.get(local_x_dim-1, j+1) + descent.get(local_x_dim-1, j-1)) * inv_h_y_sqr + D.get(local_x_dim-1 + x_range_min, j + y_range_min)*descent.get(local_x_dim-1, j));
+            local_descent_A_descent += descent.get(0, j) * A_descent.get(0, j);
+            local_descent_A_descent += descent.get(local_x_dim-1, j) * A_descent.get(local_x_dim-1, j);
+        }
+
+        A_descent.set(0, 0, -(descent.get(1, 0) + neighbors_descent.get(2, 0)) * inv_h_x_sqr - (descent.get(0, 1) + neighbors_descent.get(1, 0)) * inv_h_y_sqr + D.get(x_range_min, y_range_min)*descent.get(0, 0));
+        A_descent.set(local_x_dim-1, 0, -(neighbors_descent.get(3, 0) + descent.get(local_x_dim-1-1, 0)) * inv_h_x_sqr - (descent.get(local_x_dim-1, 1) + neighbors_descent.get(1, local_x_dim-1)) * inv_h_y_sqr + D.get(local_x_dim-1 + x_range_min, y_range_min)*descent.get(local_x_dim-1, 0));
+        A_descent.set(local_x_dim-1, local_y_dim-1, -(neighbors_descent.get(3, local_y_dim-1) + descent.get(local_x_dim-1-1, local_y_dim-1)) * inv_h_x_sqr - (neighbors_descent.get(0, local_x_dim-1) + descent.get(local_x_dim-1, local_y_dim-1-1)) * inv_h_y_sqr + D.get(local_x_dim-1 + x_range_min, local_y_dim-1 + y_range_min)*descent.get(local_x_dim-1, local_y_dim-1));
+        A_descent.set(0, local_y_dim-1, -(descent.get(1, local_y_dim-1) + neighbors_descent.get(2, local_y_dim-1)) * inv_h_x_sqr - (neighbors_descent.get(0, 0) + descent.get(0, local_y_dim-1-1)) * inv_h_y_sqr + D.get(x_range_min, local_y_dim-1 + y_range_min)*descent.get(0, local_y_dim-1));    
+
+        local_descent_A_descent += descent.get(0, 0) * A_descent.get(0, 0);
+        local_descent_A_descent += descent.get(local_x_dim-1, 0) * A_descent.get(local_x_dim-1, 0);
+        local_descent_A_descent += descent.get(local_x_dim-1, local_y_dim-1) * A_descent.get(local_x_dim-1, local_y_dim-1);
+        local_descent_A_descent += descent.get(0, local_y_dim-1) * A_descent.get(0, local_y_dim-1);
+
+
+        // std::cout << "descent_A_descent " << descent_A_descent << std::endl;
+        MPI_Barrier(MPI_COMM_WORLD);
+
+        MPI_Allreduce(&local_zr, &all_zr, 1, MPI_DOUBLE, MPI_SUM, grid);
+        MPI_Allreduce(&local_descent_A_descent, &all_descent_A_descent, 1, MPI_DOUBLE, MPI_SUM, grid);
+
+        step = all_zr / all_descent_A_descent;
+
+        // std::cout << "Step " << step << std::endl;
+
+        local_error_sqr = step*step*local_descent_sqr*scalar_product_weight;
+
+        MPI_Barrier(MPI_COMM_WORLD);
+
+        // std::cout << "Before allreduce from " << rank << std::endl;
+        MPI_Allreduce(&local_error_sqr, &all_error_sqr, 1, MPI_DOUBLE, MPI_SUM, grid);
+        // std::cout << "After allreduce " << all_error << " and " << local_error << std::endl;
+
+        if (std::sqrt(all_error_sqr) < precision)
+        {
+            break;
+        }
+    }
+
+    MPI_Barrier(MPI_COMM_WORLD);
+    MPI_Allreduce(&iteration_number, &all_iterations, 1, MPI_INT, MPI_MAX, grid);
+
+    if (rank != 0)
+    {
+        MPI_Send(local_iteration.get_ptr(0, 0), local_x_dim*local_y_dim, MPI_DOUBLE, 0, 3, grid);
+    }
+
+    if (rank == 0)
+    {
+        iteration_count = all_iterations;
+
+        for (int i = 0; i < local_x_dim; i++)
+        {
+            for (int j = 0; j < local_y_dim; j++)
+            {
+                result.set(i + x_range_min, j + y_range_min, local_iteration.get(i, j));
+            }
+        }
+
+        for (int other_rank = 1; other_rank < number_of_processes; other_rank++)
+        {
+            int other_coords[2];
+            MPI_Cart_coords(grid, other_rank, 2, other_coords); 
+            int other_x_min = this->get_x_range_min(other_coords[0]); 
+            int other_x_max = this->get_x_range_max(other_coords[0]); 
+            int other_y_min = this->get_y_range_min(other_coords[1]); 
+            int other_y_max = this->get_y_range_max(other_coords[1]); 
+            int other_x_dim = other_x_max - other_x_min + 1;
+            int other_y_dim = other_y_max - other_y_min + 1;
+
+            std::vector<double> other_iteration(other_x_dim*other_y_dim);
+            MPI_Recv(&other_iteration[0], other_x_dim*other_y_dim, MPI_DOUBLE, other_rank, 3, grid, MPI_STATUS_IGNORE);
+
+            for (int i = 0; i < other_x_dim; i++)
+            {
+                for (int j = 0; j < other_y_dim; j++)
+                {
+                    result.set(i + other_x_min, j + other_y_min, other_iteration[i*other_y_dim + j]);
+                }
+            }
+        }
+    }
+
+    // MPI_Finalize();
+
+    // std::cout << "Finished" << std::endl;
+
+    return result;
+}
+
+void Solver::set_number_of_divisions(int number_of_processes)
+{
+    // We assume number of processes is 2^n
+
+    int rest = number_of_processes / 2;
+    while (rest > 0)
+    {
+        this->number_of_divisions_x *= 2;
+        rest /= 2;
+        if (rest <= 0)
+        {
+            break;
+        }
+        this->number_of_divisions_y *= 2;
+        rest /= 2;
+    }
+}
+
+Matrix<double> Solver::operator_A(const Matrix<double> &iteration)
 {
     auto result = Matrix<double>(iteration.get_rows(), iteration.get_columns());
     #pragma omp parallel for shared(result)
@@ -234,6 +616,26 @@ double Solver::get_x(size_t i)
 double Solver::get_y(size_t j)
 {
     return this->y_min + j*this->h_y;
+}
+
+inline int Solver::get_x_range_min(int proc_x_coord)
+{
+    return floor(proc_x_coord * (((float) (this->M-1)) / this->number_of_divisions_x))+1;
+}
+
+inline int Solver::get_x_range_max(int proc_x_coord)
+{
+    return this->get_x_range_min(proc_x_coord+1)-1;
+}
+
+inline int Solver::get_y_range_min(int proc_y_coord)
+{
+    return floor(proc_y_coord * (((float) (this->N-1)) / this->number_of_divisions_y))+1;
+}
+
+inline int Solver::get_y_range_max(int proc_y_coord)
+{
+    return this->get_y_range_min(proc_y_coord+1)-1;
 }
 
 double Solver::scalar_product(const Matrix<double>& A, const Matrix<double>& B)

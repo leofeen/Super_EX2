@@ -3,6 +3,7 @@
 #include <matrix.hpp>
 #include <iostream>
 #include <cmath>
+#include <mpi.h> 
 
 
 class Solver
@@ -16,6 +17,7 @@ public:
 
     Matrix<double> solve(double precision, int& iteration_count);
     Matrix<double> solve_explicit(double precision, int& iteration_count);
+    Matrix<double> solve_mpi(double precision, int& iteration_count);
 
 private:
     double x_min;
@@ -25,6 +27,10 @@ private:
     double y_min;
     double h_y;
     size_t N;
+
+    int number_of_divisions_x;
+    int number_of_divisions_y;
+    void set_number_of_divisions(int number_of_processes);
 
     // double eps;
 
@@ -39,6 +45,11 @@ private:
     double inline get_x(size_t i);
     double inline get_y(size_t j);
 
+    int inline get_x_range_min(int proc_x_coord);
+    int inline get_x_range_max(int proc_x_coord);
+    int inline get_y_range_min(int proc_y_coord);
+    int inline get_y_range_max(int proc_y_coord);
+ 
     // double (*density)(double, double) = nullptr;  // We have f = 1. Why bother?
 
     double (*boundary_condition)(double, double) = nullptr;
