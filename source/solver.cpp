@@ -252,19 +252,20 @@ Matrix<double> Solver::solve_mpi(double precision, int &iteration_count)
     MPI_Cart_shift(grid, 1, 1, &neighbors[1], &neighbors[0]);
     MPI_Cart_shift(grid, 0, 1, &neighbors[2], &neighbors[3]);
 
-    // std::printf("rank= %d coords= %d %d  neighbors(u,d,l,r)= %d %d %d %d\n", rank, coordinates[0], coordinates[1], neighbors[0], neighbors[1], neighbors[2], neighbors[3]);
+    std::printf("rank= %d coords= %d %d  neighbors(r,l,u,d)= %d %d %d %d\n", rank, coordinates[0], coordinates[1], neighbors[0], neighbors[1], neighbors[2], neighbors[3]);
 
     auto x_range_min = this->get_x_range_min(coordinates[0]);
     auto x_range_max = this->get_x_range_max(coordinates[0]);
     auto y_range_min = this->get_y_range_min(coordinates[1]);
     auto y_range_max = this->get_y_range_max(coordinates[1]);
 
-    // std::cout << "x_range_min " << x_range_min << " x_range_max " << x_range_max << " on " << rank << std::endl;
+    std::cout << "x_range_min " << x_range_min << " x_range_max " << x_range_max << " on " << rank << std::endl;
+    std::cout << "y_range_min " << y_range_min << " y_range_max " << y_range_max << " on " << rank << std::endl;
 
     int local_x_dim = x_range_max - x_range_min + 1;
     int local_y_dim = y_range_max - y_range_min + 1;
 
-    // std::cout << "x_dim " << local_x_dim << " y_dim " << local_y_dim << " on " << rank << std::endl;
+    std::cout << "x_dim " << local_x_dim << " y_dim " << local_y_dim << " on " << rank << std::endl;
 
     // for (int i = 0; i < 4; i++)
     // {
@@ -300,7 +301,7 @@ Matrix<double> Solver::solve_mpi(double precision, int &iteration_count)
     // std::cout << "Descent from " << rank << std::endl;
     // std::cout << descent << std::endl;
 
-    int buf_space = std::max(local_x_dim, local_y_dim);
+    int buf_space = std::max(std::floor(this->M / this->number_of_divisions_x) + 1, std::floor(this->N / this->number_of_divisions_y) + 1);
     Matrix<double> send_buf_descent(4, buf_space);
 
     for (int i = 0; i < local_x_dim; i++)
@@ -343,11 +344,11 @@ Matrix<double> Solver::solve_mpi(double precision, int &iteration_count)
         MPI_Irecv(neighbors_descent.get_ptr(i, 0), buf_space, MPI_DOUBLE, neighbors[i], 1, grid, &recv_descent_requests[i]);
     }
 
-    // std::cout << "What" << std::endl;
+    std::cout << "What on " << rank << std::endl;
     MPI_Waitall(4, recv_descent_requests, MPI_STATUSES_IGNORE);
-    // std::cout << "is" << std::endl;
+    std::cout << "is on " << rank << std::endl;
     MPI_Waitall(4, send_descent_requests, MPI_STATUSES_IGNORE);
-    // std::cout << "happening" << std::endl;
+    std::cout << "happening on " << rank << std::endl;
 
     // std::cout << "Recieved from neighbors on " << rank << std::endl;
     // std::cout << neighbors_descent << std::endl;

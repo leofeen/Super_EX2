@@ -11,6 +11,11 @@ JOB_CONFIGS = {
         "400 600": [2, 4, 8, 16],
         "800 1200": [4, 8, 16, 32],
     },
+
+    "MPI": {
+        "400 600": [2, 4, 8, 16],
+        "800 1200": [4, 8, 16, 32],
+    },
 }
 
 # SH_RUN_SCRIPT_FILEPATH = r"./run_batch.sh"
@@ -27,6 +32,11 @@ def generate_omp_file(m: str, n:str, threads: int) -> None:
             number_of_cores = threads // 2
         file.write(f'#BSUB -x\n#BSUB -m "polus-c2-ib polus-c4-ib"\n#BSUB -W 00:15\n#BSUB -n 1\n#BSUB -o "OMP.%J.out"\n#BSUB -e "OMP.%J.err"\n#BSUB -R "affinity[core({number_of_cores})]"\nexport OMP_NUM_THREADS={threads} OMP_PROC_BIND=close\n/polusfs/lsf/openmp/launchOpenMP.py ./OMP {m} {n} {threads}')
 
+def generate_mpi_file(m: str, n:str, procs: int) -> None:
+    with open(rf"./jobs/job_mpi_{m}_{n}_{procs}.lsf", "w") as file:
+        file.write(f'#BSUB -x\n#BSUB -m "polus-c2-ib polus-c4-ib"\n#BSUB -W 00:15\n#BSUB -n {procs}\n#BSUB -o "MPI.%J.out"\n#BSUB -e "MPI.%J.err"\nOMP_NUM_THREADS=1 mpiexec ./MPI {m} {n} {procs}')
+
+
 def generate_all_files() -> None:
     # with open(SH_RUN_SCRIPT_FILEPATH, "w") as file:
         # file.write("1#!/bin/bash\n")
@@ -41,6 +51,11 @@ def generate_all_files() -> None:
             for thread in threads:
                 generate_omp_file(m, n, thread)
                 # file.write(rf'echo "bsub < ./jobs/job_omp_{m}_{n}_{thread}.lsf"' + "\n")
+
+        for key, procs in JOB_CONFIGS['MPI'].items():
+            m, n = key.split()
+            for proc in procs:
+                generate_mpi_file(m, n, proc)
 
 
 if __name__ == "__main__":
