@@ -465,6 +465,13 @@ Matrix<double> Solver::solve_mpi(double precision, int &iteration_count)
 
         MPI_Allreduce(&local_error_sqr, &all_error_sqr, 1, MPI_DOUBLE, MPI_SUM, grid);
 
+        #ifdef DUMP_ERRS
+        if (rank == 0)
+        {
+            std::fprintf(this->error_data_file, "%.12f\n", std::sqrt(all_error_sqr));
+        }
+        #endif
+
         if (std::sqrt(all_error_sqr) < precision)
         {
             break;

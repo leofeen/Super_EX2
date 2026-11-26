@@ -12,3 +12,6 @@ OMP_xl_dump_diff :
 
 MPI_xl : 
 	mpixlC -O1 -qstrict -qarch=pwr8 -qtune=pwr8 -I ./include -std=c++11 ./MPI.cpp ./source/solver.cpp -o MPI
+
+MPI_xl_dump_errs : 
+	mpixlC -O1 -qstrict -qarch=pwr8 -qtune=pwr8 -DDUMP_ERRS -I ./include -std=c++11 ./MPI.cpp ./source/solver.cpp -o MPI
